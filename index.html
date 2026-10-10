@@ -19,7 +19,7 @@ button:focus-visible,label.btn:focus-within{outline:2px solid #fff;outline-offse
 #bar{position:fixed;left:0;right:0;bottom:env(safe-area-inset-bottom,0px);display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;padding:14px;font-size:12px;color:var(--dim);opacity:0;transition:opacity .4s}
 #bar.show{opacity:1}
 #bar button,#bar label.btn{padding:6px 14px;font-size:12px}
-#name{max-width:40vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#name{flex-basis:100%;text-align:center;white-space:normal;word-break:break-all}
 input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
 #rec.on{color:#ff6b6b;border-color:#ff6b6b}
 #drop{position:fixed;inset:0;border:2px dashed #fff;display:none;align-items:center;justify-content:center;background:#000a;font-size:18px}
@@ -247,14 +247,17 @@ function startRec(){
   const stream = canvas.captureStream(60);
   if (dest) dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
   const mime = pickMime();
-  try { rec = new MediaRecorder(stream, {mimeType: mime || undefined, videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3}); }
-  catch(e) { nameEl.textContent = 'この環境では録画できません'; rec = null; return; }
+  rec = null;
+  const tries = [{mimeType: mime || undefined, videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3}, {mimeType: mime || undefined}, {}];
+  let lastErr = null;
+  for (const o of tries) { try { rec = new MediaRecorder(stream, o); break; } catch(e) { lastErr = e; } }
+  if (!rec) { nameEl.textContent = '録画を準備できませんでした: ' + (lastErr ? lastErr.name + ' ' + lastErr.message : ''); return; }
   chunks = []; recEnded = false;
   rec.ondataavailable = e=>{ if (e.data.size) chunks.push(e.data); };
   rec.onstop = finishRec;
   if (ctx) ctx.resume();
   if (buffer && ctx) startSource(false, ()=>{ recEnded = true; stopRec(); });
-  rec.start(1000);
+  try { rec.start(1000); } catch(e) { nameEl.textContent = '録画を開始できませんでした: ' + e.name + ' ' + e.message; rec = null; return; }
   recT0 = performance.now(); recBtn.classList.add('on');
   recTimer = setInterval(()=>{
     const t = Math.floor((performance.now()-recT0)/1000);
@@ -276,7 +279,7 @@ async function finishRec(){
   const d = new Date(), z = n=>String(n).padStart(2,'0');
   const filename = 'shiratama-' + d.getFullYear() + z(d.getMonth()+1) + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()) + '.' + ext;
   try { await dl.save({filename, data: blob}); nameEl.textContent = '保存しました'; }
-  catch(e) { nameEl.textContent = e && e.code === 'declined' ? '保存をキャンセルしました' : '保存できませんでした'; }
+  catch(e) { nameEl.textContent = e && e.code === 'declined' ? '保存をキャンセルしました' : '保存できませんでした: ' + (e && (e.code || e.message) || ''); }
 }
 recBtn.addEventListener('click', ()=>{
   if (rec && rec.state === 'recording') { stopRec(); return; }
